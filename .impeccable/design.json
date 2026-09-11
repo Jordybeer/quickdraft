@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "name": "Quickdraft",
+  "northStar": "The Draft Rail",
+  "mode": "operate",
+  "source": "app/globals.css",
+  "tokens": {
+    "radius": { "sm": "10px", "md": "14px" },
+    "tapTargetMin": "44px",
+    "inputHeight": "48px",
+    "maxWidth": "760px",
+    "accent": "var(--tg-theme-button-color, #5b8def)",
+    "background": "var(--tg-theme-bg-color, #0f1115)",
+    "surface": "var(--tg-theme-secondary-bg-color, #171a20)",
+    "text": "var(--tg-theme-text-color, #f3f5f7)",
+    "muted": "var(--tg-theme-hint-color, #9aa3ad)"
+  },
+  "principles": [
+    "Enemy five and build rail dominate the task hierarchy",
+    "Telegram theme variables are visual authority",
+    "Flat by default; tonal layers instead of decorative shadows",
+    "One-handed controls, no hover-only behavior",
+    "Stale data is visible, never silently trusted"
+  ]
+}
