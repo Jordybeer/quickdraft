@@ -38,6 +38,7 @@ export type ManualPressure = {
 
 export type ItemId =
   | "berserkers"
+  | "mercurys-treads"
   | "magnetic"
   | "kraken"
   | "bork"

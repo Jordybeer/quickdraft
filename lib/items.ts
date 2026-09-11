@@ -2,6 +2,7 @@ import type { BuildItem, ItemId } from "@/lib/types";
 
 export const ITEMS: Record<ItemId, BuildItem> = {
   berserkers: { id: "berserkers", short: "BG", name: "Berserker's Greaves", role: "early AS + movement" },
+  "mercurys-treads": { id: "mercurys-treads", short: "MT", name: "Mercury's Treads", role: "tenacity + MR" },
   magnetic: { id: "magnetic", short: "MB", name: "Magnetic Blaster", role: "core range + crit" },
   kraken: { id: "kraken", short: "KS", name: "Kraken Slayer", role: "cheap tempo DPS" },
   bork: { id: "bork", short: "BORK", name: "Blade of the Ruined King", role: "HP shred + chase" },
