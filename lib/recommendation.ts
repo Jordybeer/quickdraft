@@ -95,8 +95,10 @@ function buildPath(profile: ThreatTags, second: BuildItem, penFirstOverride?: bo
   const survivalPressure = profile.burst + profile.poke * 0.65 + profile.dive * 0.45;
   const fillers: BuildItem[] = [];
   if (survivalPressure >= 2.8 && second.id !== "bloodthirster") fillers.push(ITEMS.bloodthirster);
-  if (second.id !== "bork") fillers.push(ITEMS.bork);
+  if (profile.hpPressure >= 2.5 && second.id !== "bork") fillers.push(ITEMS.bork);
+  if (profile.hpPressure < 2.5 && second.id !== "kraken") fillers.push(ITEMS.kraken);
   if (second.id !== "bloodthirster") fillers.push(ITEMS.bloodthirster);
+  if (second.id !== "bork") fillers.push(ITEMS.bork);
   if (second.id !== "kraken") fillers.push(ITEMS.kraken);
 
   for (const item of fillers) addUnique(path, item, damageSlotLimit);
