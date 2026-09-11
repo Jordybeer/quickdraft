@@ -222,9 +222,11 @@ export default function YunaraApp() {
           </div>
         )}
 
-        <div className="reason-list">
-          {recommendation.reasons.map((reason) => <p key={reason}>{reason}</p>)}
-        </div>
+        {selected.length >= 3 && (
+          <div className="reason-list">
+            {recommendation.reasons.map((reason) => <p key={reason}>{reason}</p>)}
+          </div>
+        )}
       </section>
 
       <section className="context" aria-labelledby="context-heading">
