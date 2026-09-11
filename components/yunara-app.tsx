@@ -11,12 +11,32 @@ type Status = {
   meta?: { date?: string | null; ok?: boolean };
 };
 
+type AccessState = {
+  checked: boolean;
+  authorized: boolean;
+  configured: boolean;
+  reason?: string;
+};
+
+type CopyState = "idle" | "copied" | "failed";
+
 const emptyPressure: ManualPressure = { hardCc: false, healing: false, burst: false };
 
 function niceDate(value?: string | null) {
   if (!value) return "meta unavailable";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "meta date unknown" : `meta ${date.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
+}
+
+function rulePreference(confidence: number) {
+  if (confidence >= 84) return "Clear rules preference";
+  if (confidence >= 70) return "Moderate rules preference";
+  return "Close rules call";
+}
+
+async function jsonOrThrow(response: Response) {
+  if (!response.ok) throw new Error(`Request failed with ${response.status}`);
+  return response.json();
 }
 
 export default function YunaraApp() {
@@ -28,44 +48,86 @@ export default function YunaraApp() {
   const [pressure, setPressure] = useState<ManualPressure>(emptyPressure);
   const [status, setStatus] = useState<Status>({});
   const [sourceDegraded, setSourceDegraded] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [access, setAccess] = useState<{ checked: boolean; authorized: boolean; configured: boolean; reason?: string }>({ checked: false, authorized: true, configured: false });
+  const [copyState, setCopyState] = useState<CopyState>("idle");
+  const [access, setAccess] = useState<AccessState>({ checked: false, authorized: false, configured: false });
   const searchRef = useRef<HTMLInputElement>(null);
+  const copyTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     const webApp = window.Telegram?.WebApp;
     webApp?.ready();
     webApp?.expand();
 
-    Promise.all([
-      fetch("/api/session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ initData: webApp?.initData ?? "" }),
-      }).then(async (response) => ({ ok: response.ok, ...(await response.json()) })),
-      fetch("/api/champions").then((response) => response.json()),
-      fetch("/api/status").then((response) => response.json()),
-    ]).then(([session, catalog, nextStatus]) => {
-      setAccess({ checked: true, authorized: Boolean(session.authorized), configured: Boolean(session.configured), reason: session.reason });
-      if (!session.authorized) return;
-      const list = catalog.champions as Champion[];
-      setChampions(list);
-      setSourceDegraded(Boolean(catalog.degraded));
-      setStatus(nextStatus);
+    async function load() {
+      let session: { authorized?: boolean; configured?: boolean; reason?: string };
+      try {
+        const response = await fetch("/api/session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ initData: webApp?.initData ?? "" }),
+        });
+        session = await response.json();
+      } catch {
+        if (!cancelled) {
+          setAccess({
+            checked: true,
+            authorized: false,
+            configured: true,
+            reason: "Couldn’t verify your Telegram session. Reopen Quickdraft from the bot.",
+          });
+        }
+        return;
+      }
 
+      if (cancelled) return;
+      const nextAccess = {
+        checked: true,
+        authorized: Boolean(session.authorized),
+        configured: Boolean(session.configured),
+        reason: session.reason,
+      };
+      setAccess(nextAccess);
+      if (!nextAccess.authorized) return;
+
+      const [catalogResult, statusResult] = await Promise.allSettled([
+        fetch("/api/champions").then(jsonOrThrow),
+        fetch("/api/status").then(jsonOrThrow),
+      ]);
+      if (cancelled) return;
+
+      let list: Champion[] = [];
+      if (catalogResult.status === "fulfilled") {
+        const catalog = catalogResult.value as { champions?: Champion[]; degraded?: boolean };
+        list = catalog.champions ?? [];
+        setChampions(list);
+        setSourceDegraded(Boolean(catalog.degraded));
+      } else {
+        setSourceDegraded(true);
+      }
+
+      if (statusResult.status === "fulfilled") setStatus(statusResult.value as Status);
+
+      if (!list.length) return;
       const params = new URLSearchParams(window.location.search);
       const raw = webApp?.initDataUnsafe?.start_param ?? params.get("comp") ?? params.get("startapp");
       const wanted = parseComp(raw).map(normalizeSlug);
-      if (wanted.length) {
-        const found = wanted
-          .map((slug) => list.find((champion) => normalizeSlug(champion.id) === slug || normalizeSlug(champion.name) === slug))
-          .filter((champion): champion is Champion => Boolean(champion));
-        if (found.length) {
-          setSelected(found.slice(0, 5));
-          setActiveSlot(Math.min(found.length, 5));
-        }
+      if (!wanted.length) return;
+
+      const found = wanted
+        .map((slug) => list.find((champion) => normalizeSlug(champion.id) === slug || normalizeSlug(champion.name) === slug))
+        .filter((champion): champion is Champion => Boolean(champion));
+      if (found.length) {
+        setSelected(found.slice(0, 5));
+        setActiveSlot(Math.min(found.length, 5));
       }
-    }).catch(() => { setSourceDegraded(true); setAccess((current) => ({ ...current, checked: true })); });
+    }
+
+    void load();
+    return () => {
+      cancelled = true;
+      if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
+    };
   }, []);
 
   const recommendation = useMemo(() => recommendBuild(selected, state, pressure), [selected, state, pressure]);
@@ -94,12 +156,15 @@ export default function YunaraApp() {
   async function copyPath() {
     const items = selected.length < 3 ? [ITEMS.berserkers, ITEMS.magnetic] : recommendation.path;
     const path = items.map((item) => item.name).join(" → ");
+    if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
+
     try {
       await navigator.clipboard.writeText(path);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1200);
+      setCopyState("copied");
+      copyTimerRef.current = window.setTimeout(() => setCopyState("idle"), 1400);
     } catch {
-      setCopied(false);
+      setCopyState("failed");
+      copyTimerRef.current = window.setTimeout(() => setCopyState("idle"), 2200);
     }
   }
 
@@ -109,14 +174,29 @@ export default function YunaraApp() {
     setQuery("");
     setState("even");
     setPressure(emptyPressure);
+    setCopyState("idle");
     requestAnimationFrame(() => searchRef.current?.focus());
   }
 
   const patchLabel = status.patch?.latest ?? RULES_PATCH;
   const stale = Boolean(status.patch?.stale);
   const displayPath = selected.length < 3 ? [ITEMS.berserkers, ITEMS.magnetic] : recommendation.path;
+  const copyAnnouncement = copyState === "copied"
+    ? "Build path copied to clipboard."
+    : copyState === "failed"
+      ? "Couldn’t copy the build path. Select and copy it manually."
+      : "";
 
-  if (access.checked && !access.authorized) {
+  if (!access.checked) {
+    return (
+      <div className="access-state" aria-live="polite">
+        <h1>Quickdraft</h1>
+        <p>Checking Telegram session…</p>
+      </div>
+    );
+  }
+
+  if (!access.authorized) {
     return (
       <div className="access-state">
         <h1>Quickdraft</h1>
@@ -138,7 +218,7 @@ export default function YunaraApp() {
         </div>
       </header>
 
-      {access.checked && !access.configured && <div className="warning" role="status">Preview mode: set Telegram secrets in Vercel to enable the owner lock and bot.</div>}
+      {!access.configured && <div className="warning" role="status">Preview mode: set Telegram secrets in Vercel to enable the owner lock and bot.</div>}
       {stale && <div className="warning" role="status">New Riot patch detected. Recommendations still run, but the ruleset needs review.</div>}
       {sourceDegraded && <div className="warning" role="status">Champion data source is degraded; using a smaller fallback catalog.</div>}
 
@@ -173,6 +253,7 @@ export default function YunaraApp() {
         {activeSlot < 5 ? (
           <div className="picker">
             <label htmlFor="champion-search">Champion</label>
+            <p id="champion-picker-help" className="sr-only">Type to filter champions, then Tab to a result and press Enter to select it.</p>
             <input
               ref={searchRef}
               id="champion-search"
@@ -181,10 +262,12 @@ export default function YunaraApp() {
               placeholder={`Search enemy ${activeSlot + 1}`}
               autoComplete="off"
               enterKeyHint="search"
+              aria-describedby="champion-picker-help"
+              aria-controls="champion-results"
             />
-            <div className="results" role="listbox" aria-label="Champion results">
+            <div id="champion-results" className="results" role="group" aria-label="Champion results">
               {filtered.map((champion) => (
-                <button key={champion.id} type="button" onClick={() => pick(champion)} role="option">
+                <button key={champion.id} type="button" onClick={() => pick(champion)}>
                   <span>{champion.name}</span>
                   <small>{champion.roles.slice(0, 2).join(" · ")}</small>
                 </button>
@@ -200,9 +283,10 @@ export default function YunaraApp() {
         <div className="section-head section-head--path">
           <div>
             <h2 id="path-heading">Best path now</h2>
-            <p>{selected.length < 3 ? "Add enemies for a stronger read." : `${recommendation.confidence}% rules confidence`}</p>
+            <p>{selected.length < 3 ? "Add enemies for a stronger read." : rulePreference(recommendation.confidence)}</p>
           </div>
-          <button className="text-button" type="button" onClick={copyPath}>{copied ? "Copied" : "Copy path"}</button>
+          <button className="text-button" type="button" onClick={copyPath}>{copyState === "copied" ? "Copied" : "Copy path"}</button>
+          <span className="sr-only" role="status" aria-live="polite">{copyAnnouncement}</span>
         </div>
 
         <div className="build-rail" aria-label="Recommended item order">
@@ -237,9 +321,17 @@ export default function YunaraApp() {
           </div>
         </div>
 
-        <div className="segmented" aria-label="Current game state">
+        <div className="segmented" role="group" aria-label="Current game state">
           {(["behind", "even", "ahead"] as GameState[]).map((option) => (
-            <button key={option} type="button" className={state === option ? "is-selected" : ""} onClick={() => setState(option)}>{option}</button>
+            <button
+              key={option}
+              type="button"
+              className={state === option ? "is-selected" : ""}
+              aria-pressed={state === option}
+              onClick={() => setState(option)}
+            >
+              {option}
+            </button>
           ))}
         </div>
 
