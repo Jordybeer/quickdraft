@@ -16,9 +16,11 @@ export type Champion = {
 };
 
 export type ThreatTags = {
-  frontline: number;
+  hpPressure: number;
+  armorPressure: number;
   healing: number;
   hardCc: number;
+  cleansableCc: number;
   burst: number;
   poke: number;
   dive: number;
