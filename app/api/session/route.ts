@@ -15,7 +15,12 @@ export async function POST(request: Request) {
   if (!body.initData) return Response.json({ authorized: false, configured: true, reason: "Open Quickdraft from Telegram" }, { status: 401 });
 
   const result = validateTelegramInitData(body.initData, token);
-  if (!result.valid) return Response.json({ authorized: false, configured: true, reason: "Telegram session invalid or expired" }, { status: 401 });
+  if (!result.valid) {
+    const reason = result.reason === "expired"
+      ? "Telegram session expired — close Quickdraft and reopen it from the bot"
+      : "Telegram session could not be verified";
+    return Response.json({ authorized: false, configured: true, reason, authFailure: result.reason }, { status: 401 });
+  }
   if (result.userId !== ownerId) return Response.json({ authorized: false, configured: true, reason: "Quickdraft is owner-only" }, { status: 403 });
 
   return Response.json({ authorized: true, configured: true });
