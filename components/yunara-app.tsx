@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { recommendBuild, RULES_PATCH } from "@/lib/recommendation";
+import { recommendBuild, RULES_PATCH, RULES_VERSION } from "@/lib/recommendation";
 import { ITEMS } from "@/lib/items";
 import { normalizeSlug, parseComp } from "@/lib/telegram";
 import type { Champion, GameState, ManualPressure } from "@/lib/types";
@@ -153,13 +153,47 @@ export default function YunaraApp() {
     requestAnimationFrame(() => searchRef.current?.focus());
   }
 
-  async function copyPath() {
+  async function copyAdvice() {
     const items = selected.length < 3 ? [ITEMS.berserkers, ITEMS.magnetic] : recommendation.path;
-    const path = items.map((item) => item.name).join(" → ");
+    const activeOverrides = [
+      pressure.burst ? "Getting bursted" : null,
+      pressure.hardCc ? "CC decides fights" : null,
+      pressure.healing ? "Healing is a problem" : null,
+    ].filter((value): value is string => Boolean(value));
+    const profile = Object.entries(recommendation.profile)
+      .map(([key, value]) => `${key}=${value}`)
+      .join(" · ");
+    const lines = [
+      "Quickdraft — Yunara",
+      `Rules: ${RULES_VERSION} · patch ${RULES_PATCH}`,
+      `Live patch: ${status.patch?.latest ?? RULES_PATCH}${status.patch?.stale ? " (rules stale)" : ""}`,
+      `Dataset: ${niceDate(status.meta?.date)}`,
+      `Enemy: ${selected.length ? selected.map((champion) => champion.name).join(" / ") : "not set"}`,
+      `Game state: ${state}`,
+      `Overrides: ${activeOverrides.length ? activeOverrides.join(", ") : "none"}`,
+      `Rules read: ${rulePreference(recommendation.confidence)}`,
+      "",
+      "Best path:",
+      items.map((item) => item.name).join(" → "),
+    ];
+
+    if (selected.length >= 3 && recommendation.alternative) {
+      lines.push("", "Close branch:", recommendation.alternative.map((item) => item.name).join(" → "));
+    }
+    if (selected.length >= 3 && recommendation.reasons.length) {
+      lines.push("", "Reasons:", ...recommendation.reasons.map((reason) => `- ${reason}`));
+    }
+    if (recommendation.notes.length) {
+      lines.push("", "Notes:", ...recommendation.notes.map((note) => `- ${note}`));
+    }
+    if (selected.length >= 3) {
+      lines.push("", "Engine read:", profile);
+    }
+
     if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
 
     try {
-      await navigator.clipboard.writeText(path);
+      await navigator.clipboard.writeText(lines.join("\n"));
       setCopyState("copied");
       copyTimerRef.current = window.setTimeout(() => setCopyState("idle"), 1400);
     } catch {
@@ -182,9 +216,9 @@ export default function YunaraApp() {
   const stale = Boolean(status.patch?.stale);
   const displayPath = selected.length < 3 ? [ITEMS.berserkers, ITEMS.magnetic] : recommendation.path;
   const copyAnnouncement = copyState === "copied"
-    ? "Build path copied to clipboard."
+    ? "Full Quickdraft advice copied to clipboard."
     : copyState === "failed"
-      ? "Couldn’t copy the build path. Select and copy it manually."
+      ? "Couldn’t copy the advice. Select and copy it manually."
       : "";
 
   if (!access.checked) {
@@ -285,7 +319,7 @@ export default function YunaraApp() {
             <h2 id="path-heading">Best path now</h2>
             <p>{selected.length < 3 ? "Add enemies for a stronger read." : rulePreference(recommendation.confidence)}</p>
           </div>
-          <button className="text-button" type="button" onClick={copyPath}>{copyState === "copied" ? "Copied" : "Copy path"}</button>
+          <button className="text-button" type="button" onClick={copyAdvice}>{copyState === "copied" ? "Copied" : "Copy all"}</button>
           <span className="sr-only" role="status" aria-live="polite">{copyAnnouncement}</span>
         </div>
 
