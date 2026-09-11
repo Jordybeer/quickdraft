@@ -12,14 +12,8 @@ export type DraftSnapshot = {
   savedAt: string;
 };
 
-export function snapshotKey(snapshot: Omit<DraftSnapshot, "id" | "savedAt">) {
-  return [
-    snapshot.championIds.join(","),
-    snapshot.state,
-    snapshot.pressure.burst ? "b1" : "b0",
-    snapshot.pressure.hardCc ? "c1" : "c0",
-    snapshot.pressure.healing ? "h1" : "h0",
-  ].join("|");
+export function compKey(championIds: string[]) {
+  return championIds.join(",");
 }
 
 export function newSnapshot(snapshot: Omit<DraftSnapshot, "id" | "savedAt">): DraftSnapshot {
