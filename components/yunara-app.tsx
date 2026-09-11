@@ -62,7 +62,7 @@ export default function YunaraApp() {
           .filter((champion): champion is Champion => Boolean(champion));
         if (found.length) {
           setSelected(found.slice(0, 5));
-          setActiveSlot(Math.min(found.length, 4));
+          setActiveSlot(Math.min(found.length, 5));
         }
       }
     }).catch(() => { setSourceDegraded(true); setAccess((current) => ({ ...current, checked: true })); });
@@ -85,7 +85,7 @@ export default function YunaraApp() {
     const unique = next.filter((entry, index, all) => all.findIndex((candidate) => candidate.id === entry.id) === index).slice(0, 5);
     setSelected(unique);
     setQuery("");
-    const nextSlot = Math.min(activeSlot + 1, 4);
+    const nextSlot = Math.min(activeSlot + 1, 5);
     setActiveSlot(nextSlot);
     window.Telegram?.WebApp?.HapticFeedback?.selectionChanged?.();
     requestAnimationFrame(() => searchRef.current?.focus());
@@ -170,7 +170,7 @@ export default function YunaraApp() {
           })}
         </div>
 
-        {selected.length < 5 || activeSlot < selected.length ? (
+        {activeSlot < 5 ? (
           <div className="picker">
             <label htmlFor="champion-search">Champion</label>
             <input
