@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { recommendBuild, RULES_PATCH, RULES_VERSION } from "@/lib/recommendation";
 import { ITEMS } from "@/lib/items";
+import { ACTIVE_DRAFT_KEY, HISTORY_KEY, HISTORY_LIMIT, compKey, newSnapshot, parseSnapshots, type DraftSnapshot } from "@/lib/history";
 import { normalizeSlug, parseComp } from "@/lib/telegram";
 import type { Champion, GameState, ManualPressure } from "@/lib/types";
 
@@ -28,6 +29,12 @@ function niceDate(value?: string | null) {
   return Number.isNaN(date.getTime()) ? "meta date unknown" : `meta ${date.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
 }
 
+function historyTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "recent";
+  return date.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
 function rulePreference(confidence: number) {
   if (confidence >= 84) return "Clear rules preference";
   if (confidence >= 70) return "Moderate rules preference";
@@ -50,8 +57,12 @@ export default function YunaraApp() {
   const [sourceDegraded, setSourceDegraded] = useState(false);
   const [copyState, setCopyState] = useState<CopyState>("idle");
   const [access, setAccess] = useState<AccessState>({ checked: false, authorized: false, configured: false });
+  const [history, setHistory] = useState<DraftSnapshot[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [restoredDraft, setRestoredDraft] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const copyTimerRef = useRef<number | null>(null);
+  const hydratedRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -107,20 +118,40 @@ export default function YunaraApp() {
       }
 
       if (statusResult.status === "fulfilled") setStatus(statusResult.value as Status);
-
       if (!list.length) return;
+
+      setHistory(parseSnapshots(window.localStorage.getItem(HISTORY_KEY)).slice(0, HISTORY_LIMIT));
+
       const params = new URLSearchParams(window.location.search);
       const raw = webApp?.initDataUnsafe?.start_param ?? params.get("comp") ?? params.get("startapp");
       const wanted = parseComp(raw).map(normalizeSlug);
-      if (!wanted.length) return;
 
-      const found = wanted
-        .map((slug) => list.find((champion) => normalizeSlug(champion.id) === slug || normalizeSlug(champion.name) === slug))
-        .filter((champion): champion is Champion => Boolean(champion));
-      if (found.length) {
-        setSelected(found.slice(0, 5));
-        setActiveSlot(Math.min(found.length, 5));
+      if (wanted.length) {
+        const found = wanted
+          .map((slug) => list.find((champion) => normalizeSlug(champion.id) === slug || normalizeSlug(champion.name) === slug))
+          .filter((champion): champion is Champion => Boolean(champion));
+        if (found.length) {
+          setSelected(found.slice(0, 5));
+          setActiveSlot(Math.min(found.length, 5));
+        }
+        hydratedRef.current = true;
+        return;
       }
+
+      const [activeDraft] = parseSnapshots(window.localStorage.getItem(ACTIVE_DRAFT_KEY));
+      if (activeDraft?.championIds.length) {
+        const found = activeDraft.championIds
+          .map((id) => list.find((champion) => champion.id === id))
+          .filter((champion): champion is Champion => Boolean(champion));
+        if (found.length) {
+          setSelected(found.slice(0, 5));
+          setActiveSlot(Math.min(found.length, 5));
+          setState(activeDraft.state);
+          setPressure(activeDraft.pressure);
+          setRestoredDraft(true);
+        }
+      }
+      hydratedRef.current = true;
     }
 
     void load();
@@ -129,6 +160,30 @@ export default function YunaraApp() {
       if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    if (!access.authorized || !hydratedRef.current) return;
+
+    if (!selected.length) {
+      window.localStorage.removeItem(ACTIVE_DRAFT_KEY);
+      return;
+    }
+
+    const snapshot = newSnapshot({
+      championIds: selected.map((champion) => champion.id),
+      state,
+      pressure,
+    });
+    window.localStorage.setItem(ACTIVE_DRAFT_KEY, JSON.stringify([snapshot]));
+
+    if (selected.length === 5) {
+      const prior = parseSnapshots(window.localStorage.getItem(HISTORY_KEY));
+      const key = compKey(snapshot.championIds);
+      const next = [snapshot, ...prior.filter((entry) => compKey(entry.championIds) !== key)].slice(0, HISTORY_LIMIT);
+      window.localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
+      setHistory(next);
+    }
+  }, [access.authorized, selected, state, pressure]);
 
   const recommendation = useMemo(() => recommendBuild(selected, state, pressure), [selected, state, pressure]);
 
@@ -147,10 +202,33 @@ export default function YunaraApp() {
     const unique = next.filter((entry, index, all) => all.findIndex((candidate) => candidate.id === entry.id) === index).slice(0, 5);
     setSelected(unique);
     setQuery("");
+    setRestoredDraft(false);
     const nextSlot = Math.min(activeSlot + 1, 5);
     setActiveSlot(nextSlot);
     window.Telegram?.WebApp?.HapticFeedback?.selectionChanged?.();
     requestAnimationFrame(() => searchRef.current?.focus());
+  }
+
+  function restoreSnapshot(snapshot: DraftSnapshot) {
+    const found = snapshot.championIds
+      .map((id) => champions.find((champion) => champion.id === id))
+      .filter((champion): champion is Champion => Boolean(champion));
+    if (!found.length) return;
+
+    setSelected(found.slice(0, 5));
+    setActiveSlot(Math.min(found.length, 5));
+    setState(snapshot.state);
+    setPressure(snapshot.pressure);
+    setQuery("");
+    setHistoryOpen(false);
+    setRestoredDraft(false);
+    window.Telegram?.WebApp?.HapticFeedback?.selectionChanged?.();
+  }
+
+  function clearHistory() {
+    window.localStorage.removeItem(HISTORY_KEY);
+    setHistory([]);
+    setHistoryOpen(false);
   }
 
   async function copyAdvice() {
@@ -203,12 +281,14 @@ export default function YunaraApp() {
   }
 
   function reset() {
+    window.localStorage.removeItem(ACTIVE_DRAFT_KEY);
     setSelected([]);
     setActiveSlot(0);
     setQuery("");
     setState("even");
     setPressure(emptyPressure);
     setCopyState("idle");
+    setRestoredDraft(false);
     requestAnimationFrame(() => searchRef.current?.focus());
   }
 
@@ -262,8 +342,38 @@ export default function YunaraApp() {
             <h2 id="enemy-heading">Enemy five</h2>
             <p>Tap a slot, then type. Selection advances automatically.</p>
           </div>
-          <button className="text-button" type="button" onClick={reset}>Reset</button>
+          <div className="head-actions">
+            {history.length > 0 && (
+              <button className="text-button" type="button" aria-expanded={historyOpen} onClick={() => setHistoryOpen((open) => !open)}>
+                History · {history.length}
+              </button>
+            )}
+            <button className="text-button" type="button" onClick={reset}>Reset</button>
+          </div>
         </div>
+
+        {restoredDraft && <div className="resume-note" role="status">Restored your last draft after reload.</div>}
+
+        {historyOpen && (
+          <div className="history-panel">
+            <div className="history-panel-head">
+              <strong>Recent drafts</strong>
+              <button className="text-button" type="button" onClick={clearHistory}>Clear</button>
+            </div>
+            <div className="history-list">
+              {history.map((snapshot) => {
+                const names = snapshot.championIds.map((id) => champions.find((champion) => champion.id === id)?.name ?? id);
+                const overrides = [snapshot.pressure.burst && "burst", snapshot.pressure.hardCc && "CC", snapshot.pressure.healing && "healing"].filter(Boolean);
+                return (
+                  <button className="history-entry" type="button" key={snapshot.id} onClick={() => restoreSnapshot(snapshot)}>
+                    <span>{names.join(" · ")}</span>
+                    <small>{historyTime(snapshot.savedAt)} · {snapshot.state}{overrides.length ? ` · ${overrides.join(" + ")}` : ""}</small>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <div className="enemy-rail" aria-label="Enemy composition">
           {Array.from({ length: 5 }, (_, index) => {
@@ -273,7 +383,7 @@ export default function YunaraApp() {
                 <button
                   type="button"
                   className={`enemy-slot ${activeSlot === index ? "enemy-slot--active" : ""} ${pick ? "enemy-slot--filled" : ""}`}
-                  onClick={() => { setActiveSlot(index); setQuery(""); requestAnimationFrame(() => searchRef.current?.focus()); }}
+                  onClick={() => { setActiveSlot(index); setQuery(""); setRestoredDraft(false); requestAnimationFrame(() => searchRef.current?.focus()); }}
                   aria-label={pick ? `Enemy ${index + 1}: ${pick.name}. Tap to replace.` : `Choose enemy ${index + 1}`}
                 >
                   <span className="slot-index">{index + 1}</span>
@@ -362,7 +472,7 @@ export default function YunaraApp() {
               type="button"
               className={state === option ? "is-selected" : ""}
               aria-pressed={state === option}
-              onClick={() => setState(option)}
+              onClick={() => { setState(option); setRestoredDraft(false); }}
             >
               {option}
             </button>
@@ -380,7 +490,7 @@ export default function YunaraApp() {
               <input
                 type="checkbox"
                 checked={pressure[key]}
-                onChange={(event) => setPressure((current) => ({ ...current, [key]: event.target.checked }))}
+                onChange={(event) => { setPressure((current) => ({ ...current, [key]: event.target.checked })); setRestoredDraft(false); }}
               />
             </label>
           ))}
