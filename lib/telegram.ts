@@ -33,8 +33,11 @@ export function validateTelegramInitData(initData: string, botToken: string, max
   const hash = params.get("hash");
   if (!hash || !/^[a-f0-9]{64}$/i.test(hash)) return { valid: false as const, reason: "missing hash" };
 
+  // Bot-token validation uses every received field except `hash`.
+  // `signature` is part of modern Telegram Mini App init data and therefore
+  // must stay in the HMAC data-check-string. It is excluded only for the
+  // separate Ed25519 third-party validation flow.
   params.delete("hash");
-  params.delete("signature");
   const dataCheckString = [...params.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([key, value]) => `${key}=${value}`)
@@ -46,7 +49,9 @@ export function validateTelegramInitData(initData: string, botToken: string, max
   if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return { valid: false as const, reason: "invalid hash" };
 
   const authDate = Number(params.get("auth_date") ?? 0);
-  if (!authDate || Date.now() / 1000 - authDate > maxAgeSeconds) return { valid: false as const, reason: "expired" };
+  if (!authDate) return { valid: false as const, reason: "missing auth date" };
+  const ageSeconds = Date.now() / 1000 - authDate;
+  if (ageSeconds < -300 || ageSeconds > maxAgeSeconds) return { valid: false as const, reason: "expired" };
 
   let userId: number | undefined;
   const user = params.get("user");
