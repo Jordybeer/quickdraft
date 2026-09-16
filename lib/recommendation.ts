@@ -1,9 +1,9 @@
-import { championThreat, sumThreats } from "@/lib/champion-overrides";
+import { championThreat, sumThreats, threatProfileCoverage } from "@/lib/champion-overrides";
 import { ITEMS } from "@/lib/items";
 import type { BuildItem, Champion, GameState, ManualPressure, Recommendation, ThreatTags } from "@/lib/types";
 
 export const RULES_PATCH = "7.2e";
-export const RULES_VERSION = "yunara-2026-09-12.3";
+export const RULES_VERSION = "yunara-2026-09-16.4";
 
 const MAX_BUILD_SLOTS = 6; // boots + five completed items
 const PEN_IDS = new Set(["mortal", "ldr", "terminus"]);
@@ -185,6 +185,7 @@ export function recommendBuild(
   state: GameState = "even",
   manual: ManualPressure = { hardCc: false, healing: false, burst: false },
 ): Recommendation {
+  const coverage = threatProfileCoverage(champions);
   const base = sumThreats(champions);
   const profile = withManual(base, manual);
   const scores = scoreSecond(profile, state, manual);
@@ -235,6 +236,12 @@ export function recommendBuild(
   }
 
   const notes: string[] = [];
+
+  if (coverage.fallback.length) {
+    notes.push(
+      `Threat coverage is ${coverage.tuned}/${coverage.total} tuned; fallback heuristics are being used for ${coverage.fallback.map((champion) => champion.name).join(", ")}. Treat close branches with a little more caution.`,
+    );
+  }
 
   if (qssUseful) {
     notes.push(
@@ -296,7 +303,11 @@ export function recommendBuild(
   if (alternative && samePath(path, alternative)) alternative = undefined;
 
   const spread = ranked[0][1] - ranked[1][1];
-  const confidence = Math.max(58, Math.min(94, Math.round(72 + spread * 7 + (champions.length === 5 ? 5 : 0))));
+  const coveragePenalty = Math.min(12, coverage.fallback.length * 4);
+  const confidence = Math.max(
+    58,
+    Math.min(94, Math.round(72 + spread * 7 + (champions.length === 5 ? 5 : 0) - coveragePenalty)),
+  );
 
   return {
     path,

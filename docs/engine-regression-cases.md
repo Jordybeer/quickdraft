@@ -58,6 +58,28 @@ Expected:
 - Do not recommend Mercurial from total CC when cleanseable CC is low.
 - Copy must never say `after QSS` when QSS is not actually being recommended; explain that spacing/target selection solves mostly non-cleanseable CC instead.
 
+## 6. Rumble + Rell mixed pressure
+
+Enemy: Rumble / Jarvan IV / Yone / Jhin / Rell
+
+Expected:
+- Rumble must contribute meaningful magic/poke pressure rather than a tiny generic mage baseline.
+- Rell must contribute real armor/frontline + engage pressure.
+- Bloodthirster remains a valid second-item call because poke/dive can gate uptime.
+- With Rell modeled properly, a late LDR branch after BT + IE is allowed when armor pressure crosses the penetration threshold; BORK must not win merely because one durability scalar is slightly above a filler cutoff.
+- Guardian Angel remains a strong late defense when Yone/Jarvan/Jhin physical dive is the larger death check.
+
+## 7. Physical dive + Maokai
+
+Enemy: Zed / Viego / Yasuo / Lucian / Maokai
+
+Expected:
+- Lucian must contribute real physical burst instead of an almost-empty marksman fallback.
+- Maokai must contribute HP/frontline, sustain and substantial CC.
+- Bloodthirster should remain strong second because usable uptime is the limiting resource.
+- Kraken can remain the late damage slot when armor pressure is still light.
+- Guardian Angel should normally beat Mercurial when physical burst + dive remains the dominant death check, even if `CC decides fights` raises QSS value.
+
 ## Context overrides
 
 - `Getting bursted` should materially raise BT/survival value, but it does not have to change a path when a matchup-specific second item still wins by a wide margin.
@@ -65,6 +87,12 @@ Expected:
 - `Healing is a problem` is an explicit user signal and should force Mortal Reminder to own the single penetration slot.
 - Behind/even/ahead are tie-breakers and tempo biases, not commands to make every draft produce three different paths.
 - If an override is already covered by the current path, notes should say so rather than silently appearing broken.
+
+## Coverage
+
+- Current live champion IDs must be matched exactly; aliases such as the catalog's `MonkeyKing` must not silently miss a tuned Wukong profile.
+- If any selected champion has no tuned profile, the recommendation must disclose the fallback names in notes and reduce confidence rather than presenting the weak role baseline as equally certain.
+- Adding a tuned profile should improve the threat read without rewriting the global scoring thresholds unless regression cases show a separate scoring problem.
 
 ## Invariants
 
