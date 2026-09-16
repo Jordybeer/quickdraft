@@ -61,11 +61,14 @@ const overrides: Record<string, ChampionProfile> = {
   Leona: { frontline: 2, hardCc: 2.5, cleansableCc: 1.8, dive: 2 },
   LeeSin: { hardCc: 1, cleansableCc: 0.2, dive: 2, physicalBurst: 1.5 },
   Lissandra: { hardCc: 2, cleansableCc: 1.1, burst: 1.5, dive: 1, magicBurst: 1.5 },
+  Lucian: { burst: 1.8, poke: 0.8, dive: 0.8, physicalBurst: 2.2 },
   Lulu: { hardCc: 1.5, cleansableCc: 1.2, healing: 0.5 },
   Lux: { hardCc: 1.5, cleansableCc: 1.3, burst: 1.5, poke: 2, magicBurst: 2 },
   Malphite: { frontline: 2.5, hardCc: 2, cleansableCc: 0.2, dive: 2, magicBurst: 1 },
+  Maokai: { frontline: 2.3, hpPressure: 2.4, armorPressure: 1.35, healing: 1.2, hardCc: 2.8, cleansableCc: 1.6, poke: 0.6, dive: 1.2, magicBurst: 0.7 },
   MasterYi: { dive: 2, physicalBurst: 1.5, healing: 0.5 },
   Milio: { healing: 1.5, hardCc: 0.5, cleansableCc: 0.3 },
+  MonkeyKing: { frontline: 1, hardCc: 1.5, cleansableCc: 0.2, dive: 2, physicalBurst: 1 },
   Morgana: { hardCc: 2, cleansableCc: 1.8, poke: 1, magicBurst: 1 },
   Nautilus: { frontline: 2, hardCc: 2.5, cleansableCc: 1.2, dive: 1.5 },
   Nidalee: { burst: 1.5, poke: 2.5, magicBurst: 1.5 },
@@ -75,8 +78,10 @@ const overrides: Record<string, ChampionProfile> = {
   Pyke: { hardCc: 1.5, cleansableCc: 0.9, burst: 1.5, dive: 1.5, physicalBurst: 1.5 },
   Rakan: { hardCc: 2, cleansableCc: 1, dive: 2 },
   Rammus: { frontline: 2.5, hpPressure: 1.8, armorPressure: 2.4, hardCc: 2, cleansableCc: 1.4, dive: 1.5 },
+  Rell: { frontline: 2.2, hpPressure: 2.1, armorPressure: 1.8, hardCc: 3, cleansableCc: 0.8, dive: 1.8, magicBurst: 0.4 },
   Rengar: { burst: 2.5, dive: 2.5, physicalBurst: 2.5 },
   Riven: { frontline: 1, hardCc: 1, cleansableCc: 0.3, dive: 2, physicalBurst: 1.5 },
+  Rumble: { hpPressure: 0.7, armorPressure: 0.2, hardCc: 0.8, cleansableCc: 0.5, burst: 1.2, poke: 2.2, dive: 0.5, magicBurst: 2.4 },
   Samira: { healing: 1, dive: 1.5, burst: 1, physicalBurst: 1.5 },
   Shen: { frontline: 2, hardCc: 1.5, cleansableCc: 1.1, dive: 1 },
   Shyvana: { frontline: 1.5, dive: 1 },
@@ -151,6 +156,20 @@ function applyExplicitProfile(base: ThreatTags, profile: ChampionProfile) {
   }
 
   return result;
+}
+
+export function hasExplicitThreatProfile(champion: Champion | string) {
+  const id = typeof champion === "string" ? champion : champion.id;
+  return Boolean(overrides[id]);
+}
+
+export function threatProfileCoverage(champions: Champion[]) {
+  const fallback = champions.filter((champion) => !hasExplicitThreatProfile(champion));
+  return {
+    tuned: champions.length - fallback.length,
+    total: champions.length,
+    fallback,
+  };
 }
 
 export function championThreat(champion: Champion): ThreatTags {
